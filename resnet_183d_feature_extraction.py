@@ -11,9 +11,7 @@ Original file is located at
 from google.colab import drive
 drive.mount('/content/drive')
 
-from google.colab import files
-
-uploaded = files.upload()
+files,volume = extract_data("/content/drive/MyDrive/internship_KU/Images-FreeSurfer/")
 
 import nibabel as nib
 import glob
@@ -73,157 +71,6 @@ def draw_volume(volume, percentage=0.5, filename=None):
 if __name__ == "__main__":
     pass
 
-# Making my .nii.gz files into .nii files For both the images and the labels
-
-#images first
-
-import os
-import subprocess
-
-# Define the directories
-source_directory = '/content/drive/My Drive/internship_KU/Images-FreeSurfer'
-nii_directory = '/content/drive/MyDrive/internship_KU/Images_FreeSurfer_nii'
-
-# Create the new directories if they don't exist
-os.makedirs(nii_directory, exist_ok=True)
-os.makedirs(img_directory, exist_ok=True)
-
-# Step 1: Uncompress all .nii.gz files into the nii_directory
-for file in os.listdir(source_directory):
-    if file.endswith('.nii.gz'):
-        # Construct the full path to the file
-        file_path = os.path.join(source_directory, file)
-        # Get the base name of the file (without the extension)
-        base_name = os.path.splitext(file)[0]
-        # Define the output .nii file path
-        nii_file_path = os.path.join(nii_directory, base_name)
-        # Uncompress the file into the nii_directory
-        with open(nii_file_path, 'wb') as nii_file:
-            subprocess.run(['gunzip', '-c', file_path], stdout=nii_file)
-
-
-
-files,volume = extract_data("/content/drive/MyDrive/internship_KU/Images-FreeSurfer/")
-
-glob.glob('/content/drive/MyDrive/internship_KU/Images_FreeSurfer_nii/007_S_0068_I35790_0000.nii')
-
-filename = files
-len(files)
-for i in (range(503)):
-  filename[i] = os.path.basename(files[i])
-  filename[i] = os.path.splitext(filename[i])[0]
-
-
-
-import torch
-img = nib.load("/content/drive/MyDrive/internship_KU/Images_FreeSurfer_nii/002_S_0295_I45108_0000.nii")
-# Get voxel data as numpy array
-data = img.get_fdata()
-tensor = torch.from_numpy(data).float()
-tensor.shape
-
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
-import nibabel as nib
-import numpy as np
-import os
-import glob
-
-# Load the pretrained ResNet3D-18 model from torchvision
-model = models.resnet18(weights="ResNet18_Weights.DEFAULT")
-model.eval()
-
-# Function to preprocess a single .nii file and extract features
-def extract_features_from_nii(nii_file):
-    # Load .nii file
-    img = nib.load(nii_file)
-    data = img.get_fdata()  # Get voxel data as numpy array
-
-    # Convert numpy array to PyTorch tensor and add batch dimension
-    tensor = torch.from_numpy(data).unsqueeze(0).float()
-
-    # Perform inference
-    with torch.no_grad():
-        features = model(tensor)
-
-    # Return the extracted features (tensor)
-    return features.squeeze().cpu().numpy()  # Convert to numpy array and squeeze to remove batch dimension
-
-# Directory containing .nii files
-nii_files_dir = '/content/drive/MyDrive/internship_KU/Images_FreeSurfer_nii/'
-
-# Get list of .nii files
-nii_files = glob.glob(os.path.join(nii_files_dir, '*.nii'))
-
-# List to store extracted features
-extracted_features = []
-
-# Process each .nii file
-for nii_file in nii_files:
-    features = extract_features_from_nii(nii_file)
-    extracted_features.append(features)
-
-# Convert list to numpy array (if needed)
-extracted_features = np.array(extracted_features)
-
-# Save or further process the extracted features as needed
-# Example: Save to a file
-#np.save('extracted_features_per_file.npy', extracted_features)
-
-print("Feature extraction completed for", len(nii_files), "files.")
-
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
-import nibabel as nib
-import numpy as np
-import os
-import glob
-
-def get_features(model, x):
-    with torch.no_grad():
-        # Forward pass until the second-to-last layer (average pooling layer)
-        x = model.stem(x)
-        x = model.layer1(x)
-        x = model.layer2(x)
-        x = model.layer3(x)
-        x = model.layer4(x)
-        x = model.avgpool(x)
-        x = torch.flatten(x, 1)
-    return x
-
-mean=[0.43216, 0.394666, 0.37645]
-std=[0.22803, 0.22145, 0.216989]
-normalize = transforms.Normalize(mean=mean, std=std)
-
-for i in (range(1)):
-  img = nib.load(files[i])
-
-  # Sanity Check
-  draw_volume(volume[i], percentage=0.5)
-
-  #Convert image
-  data = img.get_fdata()
-
-  #Rescale to [0,1]
-  data = data / 255
-
-  # Define the normalization transform
-
-  mean_volume = np.mean(data)
-  std_volume = np.std(data)
-  data = (data - mean_volume) / std_volume
-
-  tensor = torch.from_numpy(data).float().unsqueeze(0)
-  #normalized using mean=[0.485, 0.456, 0.406] and std=[0.229, 0.224, 0.225].
-  print(tensor.shape)
-  tensor = normalize(tensor)
-  model = models.video.r3d_18(weights="R3D_18_Weights.DEFAULT")
-  model.eval()
-  feat = get_features(model, tensor)
-  #x = torch.stack((x, feat[1]))
-
 import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
@@ -246,7 +93,7 @@ def get_features(model, x):
 
 x = np.zeros(512)
 x = x[None, :]
-for i in range(402,403):
+for i in range(512):
 
   img = nib.load(files[i])
 
