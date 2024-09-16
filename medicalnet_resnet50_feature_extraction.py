@@ -12,7 +12,7 @@ drive.mount('/content/drive', force_remount=True)
 
 !git clone https://github.com/Tencent/MedicalNet
 
-## Chunk of code below is not orginal work and is borrowed from the MedicalNet Repo to be adapted for this project (link to MedicalNet in README)
+## Chunk of code below is borrowed from the MedicalNet Repo to be adapted for this project (link to MedicalNet in README)
 
 import torch
 import torch.nn as nn
@@ -216,7 +216,104 @@ def resnet50(**kwargs):
 
 
 
-## End of not orginal work
+## End of borrowed code
+
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+import nibabel as nib
+import numpy as np
+from MedicalNet.models.resnet import ResNet, Bottleneck, resnet50
+from collections import OrderedDict
+import os
+
+# Define the ResNet Feature Extractor
+class ResNetFeatureExtractor(ResNet):
+    def __init__(self, block, layers, input_D, input_H, input_W, num_seg_classes, shortcut_type='B', no_cuda=False):
+        super(ResNetFeatureExtractor, self).__init__(block, layers, input_D, input_H, input_W, num_seg_classes, shortcut_type, no_cuda)
+        # Remove the final segmentation layer for feature extraction
+        self.conv_seg = None
+        # Add the average pooling layer
+        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        features = self.layer4(x)  # Extract features from layer4
+        features = self.avgpool(features)  # Apply average pooling
+        features = torch.flatten(features, 1)  # Flatten to get the feature vector
+        return features
+
+# Initialize model with the desired dimensions
+model = ResNetFeatureExtractor(
+    block=Bottleneck,
+    layers=[3, 4, 6, 3],
+    input_D=256,  # Depth
+    input_H=256,  # Height
+    input_W=256,  # Width
+    num_seg_classes=1,
+    shortcut_type='B',
+    no_cuda=True
+)
+
+# Load pre-trained weights
+pretrain_path = "/content/drive/MyDrive/internship_KU/MedicalNet_files/pretrain/resnet_50_23dataset.pth"
+pretrain = torch.load(pretrain_path)
+pretrained_dict = pretrain['state_dict']
+new_state_dict = OrderedDict()
+for k, v in pretrained_dict.items():
+    name = k[7:]  # Strip 'module.' prefix if necessary
+    new_state_dict[name] = v
+
+model.load_state_dict(new_state_dict, strict=False)
+
+# Define your dataset and dataloader
+class NiftiDataset(Dataset):
+    def __init__(self, data_dir, transform=None):
+        self.data_dir = data_dir
+        self.transform = transform
+        self.files = [f for f in os.listdir(data_dir) if f.endswith('.nii') or f.endswith('.nii.gz')]
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        file_path = os.path.join(self.data_dir, self.files[idx])
+        img = nib.load(file_path).get_fdata()
+        img = img / 255
+        img = np.expand_dims(img, axis=0)  # Add channel dimension
+        img = torch.tensor(img, dtype=torch.float32)  # Convert to tensor and ensure dtype is float32
+        if self.transform:
+            img = self.transform(img)
+        return img
+
+dataset = NiftiDataset(data_dir="/content/drive/MyDrive/internship_KU/Images-FreeSurfer/")
+dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+
+# Perform feature extraction
+model.eval()
+features = []
+
+for inputs in dataloader:
+    inputs = inputs.float()  # Ensure inputs are of type float
+    with torch.no_grad():
+        outputs = model(inputs)  # Extract features
+        features.append(outputs)
+
+# Combine features from all batches
+features = torch.cat(features, dim=0)  # Concatenate along the batch dimension
+print(features.shape)  # Print output tensor shape
+
+features_np = features.numpy()
+
+# Save the NumPy array as a CSV file
+np.savetxt('features.csv', features_np, delimiter=',')
 
 # Using MedicalNet for feature extraction
 
